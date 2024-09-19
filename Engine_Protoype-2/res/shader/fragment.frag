@@ -48,5 +48,3 @@ void main()
     FragColor = vec4(result, 1.0);
 
 }
-
-// vec3 lightDir = normalize(-light.direction);
