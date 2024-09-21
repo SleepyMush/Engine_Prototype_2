@@ -1,9 +1,12 @@
 #include "core/Windows.h"
-#include "render/Shader.h"
 #include "render/Render.h"
-
 #include "render/Texture.h"
 #include "render/Camera.h"
+
+#include "render/GL_shader.h"
+
+Shader worldshader;
+Shader solidcolor;
 
 Window window;
 Render render;
@@ -22,14 +25,16 @@ float lastY = 1080.0 / 2.0;
 
 // lighting
 glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
+glm::vec3 color = glm::vec3(0.60f, 0.56f, 0.80f);
+//glm::vec3 color1 = glm::vec3(0.20f, 0.56f, 0.100f);
+//glm::vec3 color2 = glm::vec3(0.20f, 0.56f, 0.100f);
+float radius = 10.0f;
 
 int main()
 {
 	window.CreateWindow(screenwidth, screenheight, "Engine_Prototype-2");
-
-	Shader shader("res/shader/vertex.vert", "res/shader/fragment.frag");
-	Shader light("res/shader/light.vert", "res/shader/light.frag");
-
+	worldshader.Load("vertex.vert", "fragment.frag");
+	solidcolor.Load("SolidColor.vert", "SolidColor.frag");
 	DebugTexture.loadtexture("res/texture/CustomUVChecker_byValle_1K (1).png");
 
 	//Plane 1
@@ -94,14 +99,8 @@ int main()
 
 	//lights
 	Render::Mesh Lightmesh1 = render.create_mesh(vertex, index);
-	Render::Mesh Lightmesh2 = render.create_mesh(vertex, index);
-	Render::Mesh Lightmesh3 = render.create_mesh(vertex, index);
-
-	unsigned int materialdiffuse = glGetUniformLocation(shader.ID, "material.diffuse");
-	glUniform1f(materialdiffuse, 0);
-
-	unsigned int materialspecular = glGetUniformLocation(shader.ID, "material.specular");
-	glUniform1f(materialspecular, 1);
+	//Render::Mesh Lightmesh2 = render.create_mesh(vertex, index);
+	//Render::Mesh Lightmesh3 = render.create_mesh(vertex, index);
 
 	camera = glm::vec3(0.0f, 0.0f, 3.0f);
 	glEnable(GL_DEPTH_TEST);
@@ -124,42 +123,38 @@ int main()
 		deltaTime = currentFrame - lastFrame;
 		lastFrame = currentFrame;
 
-		shader.use();
-
+		worldshader.Use();
 		camera.view = camera.GetCameraMatrix();
 		camera.projection = glm::perspective(glm::radians(camera.fov), (float)screenwidth / screenheight, camera.near, camera.far);
 
-		unsigned int ProjectionLoc = glGetUniformLocation(shader.ID, "Projection");
-		glUniformMatrix4fv(ProjectionLoc, 1, GL_FALSE, glm::value_ptr(camera.projection));
-		unsigned int ViewLoc = glGetUniformLocation(shader.ID, "View");
-		glUniformMatrix4fv(ViewLoc, 1, GL_FALSE, glm::value_ptr(camera.view));
+		worldshader.SetMat4("Projection", camera.projection);
+		worldshader.SetMat4("View", camera.view);
 
 		//Lighting Information
-		unsigned int pos = glGetUniformLocation(shader.ID, "light.position");
-		glUniform3f(pos, lightPos.x, lightPos.y, lightPos.z);
+		worldshader.SetVec3("light[0].position", lightPos);
+		worldshader.SetVec3("light[0].color", color);
+		//worldshader.SetVec3("light[1].color", color1);
+		//worldshader.SetVec3("light[2].color", color2);
+		worldshader.SetFloat("light[0].radius", radius);
+
+		worldshader.SetVec3("viewPos", camera.Position);
+
+		glm::vec3 ambient = glm::vec3(0.2f, 0.2f, 0.2f);
+		glm::vec3 diffuse = glm::vec3(1.0f, 1.0f, 1.0f);
+		glm::vec3 specular = glm::vec3(0.5f, 0.5f, 0.5f);
+
+		worldshader.SetVec3("ambient", ambient);
+		worldshader.SetVec3("diffuse", diffuse);
+		worldshader.SetVec3("specular", specular);
 
 		//lightPos.x = 1.0f + sin(glfwGetTime()) * 2.0f;
 		//lightPos.y = sin(glfwGetTime() / 2.0f) * 1.0f;
-
-		unsigned int viewpos = glGetUniformLocation(shader.ID, "viewPos");
-		glUniform3f(viewpos, camera.Position.x, camera.Position.y, camera.Position.z);
-
-		unsigned int ambient = glGetUniformLocation(shader.ID, "light.ambient");
-		glUniform3f(ambient, 0.2f, 0.2f, 0.2f);
-		unsigned int diffuse = glGetUniformLocation(shader.ID, "light.diffuse");
-		glUniform3f(diffuse, 1.0f, 1.0f, 1.0f);
-		unsigned int specular = glGetUniformLocation(shader.ID, "light.specular");
-		glUniform3f(specular, 0.5f, 0.5f, 0.5f);
-
-		unsigned int materialshininess = glGetUniformLocation(shader.ID, "material.shininess");
-		glUniform1f(materialshininess, 32.0f);
 
 		//Plane
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 		model = glm::scale(model, glm::vec3(10.0f, 10.0f, 10.0f));
-		unsigned int MatLoc = glGetUniformLocation(shader.ID, "Model");
-		glUniformMatrix4fv(MatLoc, 1, GL_FALSE, glm::value_ptr(model));
+		worldshader.SetMat4("Model", model);
 
 		DebugTexture.bind(0);
 		glBindVertexArray(mesh1.vao);
@@ -169,46 +164,48 @@ int main()
 		glm::mat4 Transform = glm::mat4(1.0f);
 		Transform = glm::translate(Transform, glm::vec3(0.0f, 1.5f, 0.0f));
 		Transform = glm::rotate(Transform, (float)glfwGetTime(), glm::vec3(0.0f, 1.0f, 0.0f));
-		unsigned int MatrixLocation = glGetUniformLocation(shader.ID, "Model");
-		glUniformMatrix4fv(MatrixLocation, 1, GL_FALSE, glm::value_ptr(Transform));
+		worldshader.SetMat4("Model", Transform);
 
 		glBindVertexArray(mesh.vao);
 		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_SHORT, nullptr);
 
 		//Cube
-		light.use();
+		solidcolor.Use();
 
-		unsigned int ProjectionLoc1 = glGetUniformLocation(light.ID, "Projection");
-		glUniformMatrix4fv(ProjectionLoc1, 1, GL_FALSE, glm::value_ptr(camera.projection));
-		unsigned int ViewLoc1 = glGetUniformLocation(light.ID, "View");
-		glUniformMatrix4fv(ViewLoc1, 1, GL_FALSE, glm::value_ptr(camera.view));
+		solidcolor.SetMat4("Projection", camera.projection);
+		solidcolor.SetMat4("View", camera.view);
+		solidcolor.SetVec3("color", color);
 
+		//Transforms
 		glm::mat4 cubemodel = glm::mat4(1.0f);
 		cubemodel = glm::translate(cubemodel, glm::vec3(0.0f, 3.0f, 0.0f));
 		cubemodel = glm::scale(cubemodel, glm::vec3(0.3f, 0.3f, 0.3f));
-		unsigned int ModelLocation = glGetUniformLocation(light.ID, "Model");
-		glUniformMatrix4fv(ModelLocation, 1, GL_FALSE, glm::value_ptr(cubemodel));
+		solidcolor.SetMat4("Model", cubemodel);
 
 		glBindVertexArray(Lightmesh1.vao);
 		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(index.size()), GL_UNSIGNED_SHORT, nullptr);
 
-		glm::mat4 cubemodel2 = glm::mat4(1.0f);
-		cubemodel2 = glm::translate(cubemodel2, glm::vec3(3.0f, 3.0f, 0.0f));
-		cubemodel2 = glm::scale(cubemodel2, glm::vec3(0.3f, 0.3f, 0.3f));
-		unsigned int ModelLocation1 = glGetUniformLocation(light.ID, "Model");
-		glUniformMatrix4fv(ModelLocation1, 1, GL_FALSE, glm::value_ptr(cubemodel2));
+		////Transforms
+		//solidcolor.SetVec3("color", color1);
 
-		glBindVertexArray(Lightmesh2.vao);
-		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(index.size()), GL_UNSIGNED_SHORT, nullptr);
+		//glm::mat4 cubemodel1 = glm::mat4(1.0f);
+		//cubemodel1 = glm::translate(cubemodel1, glm::vec3(3.0f, 3.0f, 0.0f));
+		//cubemodel1 = glm::scale(cubemodel1, glm::vec3(0.3f, 0.3f, 0.3f));
+		//solidcolor.SetMat4("Model", cubemodel1);
 
-		glm::mat4 cubemodel3 = glm::mat4(1.0f);
-		cubemodel3 = glm::translate(cubemodel3, glm::vec3(-3.0f, 3.0f, 0.0f));
-		cubemodel3 = glm::scale(cubemodel3, glm::vec3(0.3f, 0.3f, 0.3f));
-		unsigned int ModelLocation2 = glGetUniformLocation(light.ID, "Model");
-		glUniformMatrix4fv(ModelLocation2, 1, GL_FALSE, glm::value_ptr(cubemodel3));
+		//glBindVertexArray(Lightmesh2.vao);
+		//glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(index.size()), GL_UNSIGNED_SHORT, nullptr);
 
-		glBindVertexArray(Lightmesh3.vao);
-		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(index.size()), GL_UNSIGNED_SHORT, nullptr);
+		////Transforms
+		//solidcolor.SetVec3("color", color2);
+
+		//glm::mat4 cubemodel2 = glm::mat4(1.0f);
+		//cubemodel2 = glm::translate(cubemodel2, glm::vec3(-3.0f, 3.0f, 0.0f));
+		//cubemodel2 = glm::scale(cubemodel2, glm::vec3(0.3f, 0.3f, 0.3f));
+		//solidcolor.SetMat4("Model", cubemodel2);
+
+		//glBindVertexArray(Lightmesh3.vao);
+		//glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(index.size()), GL_UNSIGNED_SHORT, nullptr);
 
 	}
 	DebugTexture.cleanUp();
