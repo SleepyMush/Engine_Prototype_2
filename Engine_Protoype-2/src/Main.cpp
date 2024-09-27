@@ -2,6 +2,7 @@
 #include "render/Render.h"
 #include "render/Texture.h"
 #include "render/Camera.h"
+#include "render/SSBO.h"
 
 #include "render/GL_shader.h"
 
@@ -23,12 +24,15 @@ bool firstMouse = true;
 float lastX = 1920.0 / 2.0;
 float lastY = 1080.0 / 2.0;
 
-// lighting
-glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
-glm::vec3 color = glm::vec3(0.60f, 0.56f, 0.80f);
-//glm::vec3 color1 = glm::vec3(0.20f, 0.56f, 0.100f);
-//glm::vec3 color2 = glm::vec3(0.20f, 0.56f, 0.100f);
-float radius = 10.0f;
+SSBO ssbo;
+
+struct Light {
+	glm::vec3 color;
+	float radius_D;
+	glm::vec3 position;
+	float radius;
+};
+int numLights = 1;
 
 int main()
 {
@@ -36,6 +40,10 @@ int main()
 	worldshader.Load("vertex.vert", "fragment.frag");
 	solidcolor.Load("SolidColor.vert", "SolidColor.frag");
 	DebugTexture.loadtexture("res/texture/CustomUVChecker_byValle_1K (1).png");
+
+
+	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+	glDebugMessageCallback(window.glDebugOutput, nullptr);
 
 	//Plane 1
 	std::vector<Render::Vertex> vertices =
@@ -99,14 +107,23 @@ int main()
 
 	//lights
 	Render::Mesh Lightmesh1 = render.create_mesh(vertex, index);
-	//Render::Mesh Lightmesh2 = render.create_mesh(vertex, index);
-	//Render::Mesh Lightmesh3 = render.create_mesh(vertex, index);
 
 	camera = glm::vec3(0.0f, 0.0f, 3.0f);
 	glEnable(GL_DEPTH_TEST);
 
-	//glEnable(GL_CULL_FACE);
-	//glCullFace(GL_BACK);
+	//GLint maxUboSize;
+	//glGetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE, &maxUboSize);
+	//std::cout << "Maximum UBO size: " << maxUboSize << " bytes\n";
+
+	GLsizeiptr bufferSize = sizeof(Light) * numLights;
+	ssbo.SSBObuffer(bufferSize);
+
+	std::vector<Light> lightData(numLights);
+	for (int i = 0; i < numLights; ++i) {
+		lightData[i].color = glm::vec3(0.60f, 0.56f, 0.80f);
+		lightData[i].position = glm::vec3(1.0f, 1.0f, 1.0f);
+		lightData[i].radius = 2.0f;
+	}
 
 	while (!glfwWindowShouldClose(window)) 
 	{
@@ -130,25 +147,22 @@ int main()
 		worldshader.SetMat4("Projection", camera.projection);
 		worldshader.SetMat4("View", camera.view);
 
+		ssbo.updateSSBO(bufferSize, lightData.data());
+
 		//Lighting Information
-		worldshader.SetVec3("light[0].position", lightPos);
-		worldshader.SetVec3("light[0].color", color);
-		//worldshader.SetVec3("light[1].color", color1);
-		//worldshader.SetVec3("light[2].color", color2);
-		worldshader.SetFloat("light[0].radius", radius);
+		worldshader.SetVec3("light[0].position", lightData[0].position);
+		worldshader.SetVec3("light[0].color", lightData[0].color);
+		worldshader.SetFloat("light[0].radius", lightData[0].radius);
 
 		worldshader.SetVec3("viewPos", camera.Position);
 
-		glm::vec3 ambient = glm::vec3(0.2f, 0.2f, 0.2f);
-		glm::vec3 diffuse = glm::vec3(1.0f, 1.0f, 1.0f);
-		glm::vec3 specular = glm::vec3(0.5f, 0.5f, 0.5f);
+		//Sun
+		glm::vec3 directLightDir = glm::vec3(-0.2f, -1.0f, -0.3f); 
+		glm::vec3 directLightColor = glm::vec3(0.1f, 0.4f, 0.3f); 
 
-		worldshader.SetVec3("ambient", ambient);
-		worldshader.SetVec3("diffuse", diffuse);
-		worldshader.SetVec3("specular", specular);
-
-		//lightPos.x = 1.0f + sin(glfwGetTime()) * 2.0f;
-		//lightPos.y = sin(glfwGetTime() / 2.0f) * 1.0f;
+		//Sun Information
+		worldshader.SetVec3("sun.direction", directLightDir);
+		worldshader.SetVec3("sun.color", directLightColor);
 
 		//Plane
 		glm::mat4 model = glm::mat4(1.0f);
@@ -174,7 +188,7 @@ int main()
 
 		solidcolor.SetMat4("Projection", camera.projection);
 		solidcolor.SetMat4("View", camera.view);
-		solidcolor.SetVec3("color", color);
+		solidcolor.SetVec3("color", lightData[0].color);
 
 		//Transforms
 		glm::mat4 cubemodel = glm::mat4(1.0f);
@@ -185,29 +199,8 @@ int main()
 		glBindVertexArray(Lightmesh1.vao);
 		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(index.size()), GL_UNSIGNED_SHORT, nullptr);
 
-		////Transforms
-		//solidcolor.SetVec3("color", color1);
-
-		//glm::mat4 cubemodel1 = glm::mat4(1.0f);
-		//cubemodel1 = glm::translate(cubemodel1, glm::vec3(3.0f, 3.0f, 0.0f));
-		//cubemodel1 = glm::scale(cubemodel1, glm::vec3(0.3f, 0.3f, 0.3f));
-		//solidcolor.SetMat4("Model", cubemodel1);
-
-		//glBindVertexArray(Lightmesh2.vao);
-		//glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(index.size()), GL_UNSIGNED_SHORT, nullptr);
-
-		////Transforms
-		//solidcolor.SetVec3("color", color2);
-
-		//glm::mat4 cubemodel2 = glm::mat4(1.0f);
-		//cubemodel2 = glm::translate(cubemodel2, glm::vec3(-3.0f, 3.0f, 0.0f));
-		//cubemodel2 = glm::scale(cubemodel2, glm::vec3(0.3f, 0.3f, 0.3f));
-		//solidcolor.SetMat4("Model", cubemodel2);
-
-		//glBindVertexArray(Lightmesh3.vao);
-		//glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(index.size()), GL_UNSIGNED_SHORT, nullptr);
-
 	}
+	ssbo.clear();
 	DebugTexture.cleanUp();
 	return 0;
 }
@@ -274,5 +267,3 @@ void Window::mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
 
 	camera.CameraUpdate();
 }
-
-
