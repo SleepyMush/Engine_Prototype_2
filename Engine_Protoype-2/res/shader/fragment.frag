@@ -41,6 +41,7 @@ void main()
 
     result += CalDirectionLighting(sun, viewDir);
 
+   //FragColor = vec4(result, 1.0);
    FragColor = vec4(result, 1.0) * texture(textureSampler, TexCoord);
    //FragColor = vec4(Normal, 1.0);
 }
@@ -75,7 +76,7 @@ vec3 CalcPointLighting(Light light, vec3 viewDir)
     diffuse  *= attenuation;
     specular *= attenuation;
 
-    return ambient + diffuse + specular;
+    return ambient * light.color  + diffuse * light.color + specular * light.color;
 }
 
 vec3 CalDirectionLighting(Sun sun,vec3 viewDir)

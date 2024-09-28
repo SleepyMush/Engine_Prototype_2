@@ -1,10 +1,11 @@
+//Engine
 #include "core/Windows.h"
 #include "render/Render.h"
 #include "render/Texture.h"
 #include "render/Camera.h"
-#include "render/SSBO.h"
-
 #include "render/GL_shader.h"
+
+#include "render/Light.h"
 
 Shader worldshader;
 Shader solidcolor;
@@ -13,6 +14,7 @@ Window window;
 Render render;
 Texture DebugTexture;
 Camera camera;
+Lights light;
 
 int screenwidth = 1920;
 int screenheight = 1080;
@@ -24,16 +26,6 @@ bool firstMouse = true;
 float lastX = 1920.0 / 2.0;
 float lastY = 1080.0 / 2.0;
 
-SSBO ssbo;
-
-struct Light {
-	glm::vec3 color;
-	float radius_D;
-	glm::vec3 position;
-	float radius;
-};
-int numLights = 1;
-
 int main()
 {
 	window.CreateWindow(screenwidth, screenheight, "Engine_Prototype-2");
@@ -41,9 +33,9 @@ int main()
 	solidcolor.Load("SolidColor.vert", "SolidColor.frag");
 	DebugTexture.loadtexture("res/texture/CustomUVChecker_byValle_1K (1).png");
 
-
 	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 	glDebugMessageCallback(window.glDebugOutput, nullptr);
+
 
 	//Plane 1
 	std::vector<Render::Vertex> vertices =
@@ -108,22 +100,18 @@ int main()
 	//lights
 	Render::Mesh Lightmesh1 = render.create_mesh(vertex, index);
 
-	camera = glm::vec3(0.0f, 0.0f, 3.0f);
 	glEnable(GL_DEPTH_TEST);
+
+	glm::vec3 color = glm::vec3(0.0f, 1.0f, 1.0f);
+	glm::vec3 position = glm::vec3(1.0f, 1.0f, 1.0f);
+	float radius = 2.0f;
+	light.CreateLights(color, position, radius);
+
+	camera = glm::vec3(0.0f, 0.0f, 3.0f);
 
 	//GLint maxUboSize;
 	//glGetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE, &maxUboSize);
 	//std::cout << "Maximum UBO size: " << maxUboSize << " bytes\n";
-
-	GLsizeiptr bufferSize = sizeof(Light) * numLights;
-	ssbo.SSBObuffer(bufferSize);
-
-	std::vector<Light> lightData(numLights);
-	for (int i = 0; i < numLights; ++i) {
-		lightData[i].color = glm::vec3(0.60f, 0.56f, 0.80f);
-		lightData[i].position = glm::vec3(1.0f, 1.0f, 1.0f);
-		lightData[i].radius = 2.0f;
-	}
 
 	while (!glfwWindowShouldClose(window)) 
 	{
@@ -147,12 +135,7 @@ int main()
 		worldshader.SetMat4("Projection", camera.projection);
 		worldshader.SetMat4("View", camera.view);
 
-		ssbo.updateSSBO(bufferSize, lightData.data());
-
-		//Lighting Information
-		worldshader.SetVec3("light[0].position", lightData[0].position);
-		worldshader.SetVec3("light[0].color", lightData[0].color);
-		worldshader.SetFloat("light[0].radius", lightData[0].radius);
+		light.UpdateLights(worldshader);
 
 		worldshader.SetVec3("viewPos", camera.Position);
 
@@ -188,7 +171,7 @@ int main()
 
 		solidcolor.SetMat4("Projection", camera.projection);
 		solidcolor.SetMat4("View", camera.view);
-		solidcolor.SetVec3("color", lightData[0].color);
+		light.UpdateLights(solidcolor);
 
 		//Transforms
 		glm::mat4 cubemodel = glm::mat4(1.0f);
@@ -200,7 +183,7 @@ int main()
 		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(index.size()), GL_UNSIGNED_SHORT, nullptr);
 
 	}
-	ssbo.clear();
+	light.~Lights();
 	DebugTexture.cleanUp();
 	return 0;
 }
@@ -267,3 +250,5 @@ void Window::mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
 
 	camera.CameraUpdate();
 }
+
+
